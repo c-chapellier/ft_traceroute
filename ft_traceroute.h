@@ -45,7 +45,7 @@ struct data_t
     int icmp_socket;
     uint8_t args;
 
-    int udp_packet_size;
+    int packet_size;
     int n_queries_per_hops;
     int max_hops;
     int wait_time;

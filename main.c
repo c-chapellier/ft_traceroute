@@ -1,6 +1,6 @@
 #include "ft_traceroute.h"
 
-static void fill_args(char *argv[]);
+static void fill_args(char *argv[], int *last_arg);
 static void get_ips(int i);
 static void create_sockets();
 static void send_udp(struct timeval *send_time);
@@ -12,11 +12,12 @@ int main(int argc, char *argv[])
 {
     char ip_buffer[INET_ADDRSTRLEN];
     char last_ip[NI_MAXHOST];
+    int last_arg;
 
 
     if (argc < 2)
     {
-        fprintf(stderr, "usage: %s [-hfmqwn] host\n", argv[0]);
+        fprintf(stderr, "usage: %s [-hfmqwn] host [bytes per packet]\n", argv[0]);
         fprintf(stderr, "          [-h ???]\n");
         fprintf(stderr, "          [-f first_ttl]\n");
         fprintf(stderr, "          [-m max_ttl]\n");
@@ -30,18 +31,23 @@ int main(int argc, char *argv[])
     memset(last_ip, 0, sizeof last_ip);
 
     metadata.args = 0;
-
-    metadata.udp_packet_size = 60;
     metadata.n_queries_per_hops = 3;
     metadata.wait_time = 5;
     metadata.first_ttl = 1;
     metadata.max_ttl = 30;
-    
-    metadata.server_domain = argv[argc - 1];
     metadata.server_ip = ip_buffer;
     metadata.server_port = 33434;
 
-    fill_args(&argv[1]);
+    fill_args(&argv[1], &last_arg);
+
+    if (argc - last_arg < 2)
+    {
+        fprintf(stderr, "Specify \"host\" missing argument.\n");
+        exit(1);
+    }
+
+    metadata.packet_size = argc - last_arg < 3 ? 60 : atoi(argv[last_arg + 2]);
+    metadata.server_domain = argv[last_arg + 1];
 
     if (metadata.first_ttl < 1 || metadata.first_ttl > 255)
     {
@@ -63,8 +69,22 @@ int main(int argc, char *argv[])
         fprintf(stderr, "n_queries_per_hops ttl must be greater than 0\n");
         exit(1);
     }
+    if (metadata.n_queries_per_hops < 1)
+    {
+        fprintf(stderr, "n_queries_per_hops ttl must be greater than 0\n");
+        exit(1);
+    }
+    if (metadata.packet_size > 49999)
+    {
+        fprintf(stderr, "n_queries_per_hops ttl must be smaller than 50000\n");
+        exit(1);
+    }
+    if (metadata.packet_size < 28)
+    {
+        metadata.packet_size = 28;
+    }
 
-    printf("ft_traceroute to %s (%s), %d hops max, %d byte packets\n", metadata.server_domain, metadata.server_ip, metadata.max_ttl, metadata.udp_packet_size);
+    printf("ft_traceroute to %s (%s), %d hops max, %d byte packets\n", metadata.server_domain, metadata.server_ip, metadata.max_ttl, metadata.packet_size);
     for (int i = metadata.first_ttl; i <= metadata.max_ttl; ++i)
     {
         printf("%d", i);
@@ -83,7 +103,7 @@ int main(int argc, char *argv[])
     return (0);
 }
 
-static void fill_args(char *argv[])
+static void fill_args(char *argv[], int *last_arg)
 {
     args_t  args[NBR_OF_ARGS];
 
@@ -99,12 +119,14 @@ static void fill_args(char *argv[])
     args[4].value = ARG_W;
     args[5].name = "-n";
     args[5].value = ARG_N;
+    *last_arg = 0;
     for (int i = 0; argv[i] != NULL; ++i)
     {
         for (int j = 0; j < NBR_OF_ARGS; ++j)
         {
             if (strcmp(argv[i], args[j].name) == 0)
             {
+                *last_arg = i + 2;
                 metadata.args |= args[j].value;
                 switch (args[j].value)
                 {
@@ -119,6 +141,9 @@ static void fill_args(char *argv[])
                         break ;
                     case ARG_W:
                         metadata.wait_time = atoi(argv[i + 1]);
+                        break ;
+                    default:
+                        *last_arg = i + 1;
                         break ;
                 }
             }
@@ -195,7 +220,7 @@ static void create_sockets(int ttl)
 
 static void send_udp(struct timeval *send_time)
 {
-    uint8_t outpack[metadata.udp_packet_size - IP_HEADER_SIZE - UDP_HEADER_SIZE];
+    uint8_t outpack[metadata.packet_size - IP_HEADER_SIZE - UDP_HEADER_SIZE];
     int rc;
 
     for (int i = 0; i < (int)sizeof outpack; ++i)
