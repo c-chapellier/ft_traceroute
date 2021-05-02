@@ -1,2 +1,5 @@
 # ft_traceroute
-Show the travel of an internet request
+Recode the traceroute command
+
+Arguments
+- -hfmqwn
